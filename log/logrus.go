@@ -136,9 +136,11 @@ func (l *LogrusLogger) Fields() Fields {
 }
 
 func (l *LogrusLogger) prepareEntry() *logrus.Entry {
-	return l.log.
-		WithFields(logrus.Fields(l.Fields())).
-		WithField("prefix", l.Prefix())
+	if len(l.Fields()) > 0 {
+		return l.log.WithFields(logrus.Fields(l.Fields())).WithField("prefix", l.Prefix())
+	} else {
+		return l.log.WithFields(logrus.Fields(nil))
+	}
 }
 
 func (l *LogrusLogger) SetLevel(level Level) {

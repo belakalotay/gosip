@@ -50,6 +50,7 @@ type TransportLayerFactory func(
 	dnsResolver *net.Resolver,
 	msgMapper sip.MessageMapper,
 	logger log.Logger,
+	sipmsg_logger log.Logger,
 ) transport.Layer
 
 type TransactionLayerFactory func(tpl sip.Transport, logger log.Logger) transaction.Layer
@@ -95,6 +96,7 @@ func NewServer(
 		txFactory = transaction.NewLayer
 	}
 
+	sipmsg_logger := logger
 	logger = logger.WithPrefix("gosip.Server")
 
 	var host string
@@ -150,7 +152,7 @@ func NewServer(
 	srv.log = logger.WithFields(log.Fields{
 		"sip_server_ptr": fmt.Sprintf("%p", srv),
 	})
-	srv.tp = tpFactory(ip, dnsResolver, config.MsgMapper, srv.Log())
+	srv.tp = tpFactory(ip, dnsResolver, config.MsgMapper, srv.Log(), sipmsg_logger)
 	sipTp := &sipTransport{
 		tpl: srv.tp,
 		srv: srv,

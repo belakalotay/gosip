@@ -85,7 +85,8 @@ type layer struct {
 	wg         sync.WaitGroup
 	cancelOnce sync.Once
 
-	log log.Logger
+	log       log.Logger
+	sipmsglog log.Logger
 }
 
 // NewLayer creates transport layer.
@@ -96,6 +97,7 @@ func NewLayer(
 	dnsResolver *net.Resolver,
 	msgMapper sip.MessageMapper,
 	logger log.Logger,
+	sipmsg_logger log.Logger,
 ) Layer {
 	tpl := &layer{
 		protocols:   newProtocolStore(),
@@ -112,6 +114,7 @@ func NewLayer(
 		done:     make(chan struct{}),
 	}
 
+	tpl.sipmsglog = sipmsg_logger
 	tpl.log = logger.
 		WithPrefix("transport.Layer").
 		WithFields(map[string]interface{}{
@@ -133,6 +136,10 @@ func (tpl *layer) String() string {
 
 func (tpl *layer) Log() log.Logger {
 	return tpl.log
+}
+
+func (tpl *layer) SipMsgLog() log.Logger {
+	return tpl.sipmsglog
 }
 
 func (tpl *layer) Cancel() {
@@ -299,8 +306,11 @@ func (tpl *layer) Send(msg sip.Message) error {
 			}
 		}
 
-		logger := log.AddFieldsFrom(tpl.Log(), protocol, msg)
-		logger.Debugf("sending SIP request:\n%s", msg)
+		// logger := log.AddFieldsFrom(tpl.Log(), protocol, msg)
+		destination := msg.Destination()
+		destination += " over "
+		destination += msg.Transport()
+		tpl.SipMsgLog().Infof("sending SIP request to %s:\n%s", destination, msg)
 
 		if err = protocol.Send(target, msg); err != nil {
 			return fmt.Errorf("send SIP message through %s protocol to %s: %w", protocol.Network(), target.Addr(), err)
@@ -320,8 +330,11 @@ func (tpl *layer) Send(msg sip.Message) error {
 			return fmt.Errorf("build address target for %s: %w", msg.Destination(), err)
 		}
 
-		logger := log.AddFieldsFrom(tpl.Log(), protocol, msg)
-		logger.Debugf("sending SIP response:\n%s", msg)
+		// logger := log.AddFieldsFrom(tpl.Log(), protocol, msg)
+		destination := msg.Destination()
+		destination += " over "
+		destination += msg.Transport()
+		tpl.SipMsgLog().Infof("sending SIP response to %s:\n%s", destination, msg)
 
 		if err = protocol.Send(target, msg); err != nil {
 			return fmt.Errorf("send SIP message through %s protocol to %s: %w", protocol.Network(), target.Addr(), err)
@@ -377,8 +390,15 @@ func (tpl *layer) dispose() {
 // should be called inside goroutine for non-blocking forwarding
 func (tpl *layer) handleMessage(msg sip.Message) {
 	logger := tpl.Log().WithFields(msg.Fields())
-
-	logger.Debugf("received SIP message:\n%s", msg)
+	source := "unknown address"
+	if via, ok := msg.ViaHop(); ok {
+		source = via.Host
+		source += ":"
+		source += via.Port.String()
+		source += " over "
+		source += via.Transport
+	}
+	tpl.SipMsgLog().Infof("received SIP message from %s:\n%s", source, msg)
 	logger.Trace("passing up SIP message...")
 
 	// pass up message
